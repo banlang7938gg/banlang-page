@@ -34,15 +34,15 @@
 </head>
 <body>
   <div class="card">
-    <h1>ระบบเช็กอินด้วย GPS</h1>
-    <p>ตัวอย่างฟรีที่ใช้เบราว์เซอร์รับตำแหน่งและบันทึกลงในอุปกรณ์ของคุณ</p>
+    <h1>ระบบเช็กชื่อด้วย GPS</h1>
+    <p>เช็กชื่อได้เฉพาะในพื้นที่มหาวิทยาลัยราชภัฏเทพสตรี ลพบุรี ภายในระยะ 1 กิโลเมตร</p>
 
     <div class="row">
       <input id="nameInput" type="text" placeholder="ชื่อของคุณ" />
-      <button id="checkinBtn">เช็กอินตอนนี้</button>
+      <button id="checkinBtn">เช็กชื่อเลย</button>
     </div>
 
-    <div class="status" id="status">กำลังรอให้คุณเช็กอิน</div>
+    <div class="status" id="status">กรุณากรอกชื่อและเช็กชื่อภายในพื้นที่มหาวิทยาลัยราชภัฏเทพสตรี ลพบุรี</div>
     <div id="map"></div>
 
     <div class="list" id="checkinList"></div>
@@ -56,13 +56,24 @@
     const listEl = document.getElementById('checkinList');
     const button = document.getElementById('checkinBtn');
 
+    const universityCenter = { lat: 14.799994129167628, lng: 100.62213339492743 };
+    const allowedRadiusMeters = 1000;
+
     let map;
     let marker;
+    let allowedCircle;
 
     function initMap() {
-      map = L.map('map').setView([13.7563, 100.5018], 13);
+      map = L.map('map').setView([universityCenter.lat, universityCenter.lng], 14);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      allowedCircle = L.circle([universityCenter.lat, universityCenter.lng], {
+        color: '#2563eb',
+        fillColor: '#60a5fa',
+        fillOpacity: 0.15,
+        radius: allowedRadiusMeters
       }).addTo(map);
     }
 
@@ -95,6 +106,19 @@
       renderCheckins(items);
     }
 
+    function calculateDistanceMeters(lat1, lng1, lat2, lng2) {
+      const toRad = (value) => (value * Math.PI) / 180;
+      const R = 6371000;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
     function updateMap(lat, lng) {
       if (!map) initMap();
       map.setView([lat, lng], 16);
@@ -112,15 +136,25 @@
       statusEl.textContent = 'กำลังขอตำแหน่งจากอุปกรณ์...';
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const distance = calculateDistanceMeters(lat, lng, universityCenter.lat, universityCenter.lng);
+
+          if (distance > allowedRadiusMeters) {
+            statusEl.textContent = `อยู่นอกพื้นที่มหาวิทยาลัยราชภัฏเทพสตรี ลพบุรี กรุณาเข้ามาในรัศมี ${allowedRadiusMeters / 1000} กิโลเมตร เพื่อเช็กชื่อ`;
+            updateMap(lat, lng);
+            return;
+          }
+
           const item = {
             name,
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
+            lat,
+            lng,
             timestamp: new Date().toLocaleString('th-TH')
           };
           saveCheckin(item);
           updateMap(item.lat, item.lng);
-          statusEl.textContent = `เช็กอินสำเร็จที่ ${item.lat.toFixed(6)}, ${item.lng.toFixed(6)}`;
+          statusEl.textContent = `เช็กชื่อสำเร็จสำหรับ ${item.name} ที่ ${item.lat.toFixed(6)}, ${item.lng.toFixed(6)} (${distance.toFixed(0)} เมตรจากจุดมหาวิทยาลัย)`;
         },
         (error) => {
           statusEl.textContent = 'ไม่สามารถรับตำแหน่งได้: ' + error.message;
